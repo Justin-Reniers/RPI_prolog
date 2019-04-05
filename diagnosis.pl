@@ -1,4 +1,5 @@
 :- [tp].
+:- use_module(library(pairs)).
 
 % Definition of logical gates, used in the examples below.
 and_gate(all X:(and(X) , ~ab(X) => (in1(X), in2(X) <=> out(X)))).
@@ -100,7 +101,7 @@ gatherDiagnoses(HT, Diagnoses) :-
 rem_super_sets([], []).
 rem_super_sets([L|Ls], R) :-
 	(select(T, Ls, L1),
-	ord_subset(L, T)
+	subset(L, T)
 	->	rem_super_sets([L|L1], R)
 	;	R = [L|L2],
 		rem_super_sets(Ls, L2)
@@ -119,8 +120,13 @@ longer(=, L1, L2) :-
 	length(L2, N2),
 	N1 = N2.
 	
+sortDiagnosesByLength(Atoms, ByLength) :-
+	map_list_to_pairs(length, Atoms, Pairs),
+	keysort(Pairs, Sorted),
+	pairs_values(Sorted, ByLength).
+	
 getMinimalDiagnoses(Diagnoses, MinimalDiagnoses) :-
-	predsort(longer, Diagnoses, SortedDiagnoses),
+	sortDiagnosesByLength(Diagnoses, SortedDiagnoses),
 	rem_super_sets(SortedDiagnoses, MinimalDiagnoses).
 	
 main(SD, COMP, OBS, PHS, HT, MinimalDiagnoses) :-
