@@ -58,27 +58,42 @@ fulladder(SD, COMP, OBS) :-
   
  %--------------------------------------------------------------------------
   
+% Makes singleton lists out of all Components in the current conflict set.
 listifyCS([], ListCS) :-
 	ListCS = [].
 listifyCS([Head|Tail], ListCS) :-
 	listifyCS(Tail, NewList),
 	append([[Head]], NewList, ListCS).
- 
+
+% Creates a list of singleton lists of the current conflict set (listifyCS), creates a list of paths 
+% (appends  
 makeChildren(SD, COMP, OBS, PHS, CS, HT) :-
-	listifyCS(CS, Res),
-	maplist(append(PHS), Res, PHSes),
+	listifyCS(CS, SingletonsCS),
+	maplist(append(PHS), SingletonsCS, PHSes),
 	maplist(makeHittingTree(SD, COMP, OBS), PHSes, HT).
 	
-
+% Creates the hitting tree for a System. If there is no conflict set given, the current node is a leaf node with
+% the path towards it as PHS (previous hitting sets).
 makeHittingTree(SD, COMP, OBS, PHS, HT) :-
-	not(tp(SD, COMP, OBS, PHS, CS)),
+	not(tp(SD, COMP, OBS, PHS, _)),
 	HT = leaf(PHS).
- 
 makeHittingTree(SD, COMP, OBS, PHS, HT) :-
 	tp(SD, COMP, OBS, PHS, CS),
 	makeChildren(SD, COMP, OBS, PHS, CS, NewHT),
 	HT = node(NewHT, CS, PHS).
+
+% A slightly more efficient version of makeHittingTree. This one only has to check for conflict sets
+% if there are none left, compared to the first 	
+makeHittingTree2(SD, COMP, OBS, PHS, HT) :-
+	tp(SD, COMP, OBS, PHS, CS),
+	makeChildren(SD, COMP, OBS, PHS, CS, NewHT),
+	HT = node(NewHT, CS, PHS),
+	!.
+makeHittingTree2(SD, COMP, OBS, PHS, HT) :-
+	not(tp(SD, COMP, OBS, PHS, _)),
+	HT = leaf(PHS).
 	
+% Peels away the outer list layer of nested lists. 
 flattenOneLayer([], []).
 flattenOneLayer([Head|Tail], Res) :-
 	is_list(Head), 
@@ -87,17 +102,19 @@ flattenOneLayer([Head|Tail], Res) :-
 	append(Head, Tail1, Res).
 flattenOneLayer([Head|Tail], [Head|Tail1]) :-
 	flattenOneLayer(Tail, Tail1).
-	
+
+% Gathers all the paths towards the leaf nodes of the hitting tree (the hitting sets) and appends them to the result. 
 gatherDiagnoses(HT, Res) :-
 	HT = leaf(PHS),	
 	append([PHS], [], Res).
 gatherDiagnoses(HT, Diagnoses) :-
-	HT = node(SHT, CS, PHS),
+	HT = node(SHT, _, _),
 	maplist(gatherDiagnoses, SHT, SDiagnoses),
 	flattenOneLayer(SDiagnoses, Res),
 	Diagnoses = Res.	
 	
 % Credits go to https://stackoverflow.com/questions/13733496/prolog-removing-supersets-in-a-list-of-lists
+% Removes all super sets from the given list. Requires the list to be ordered.
 rem_super_sets([], []).
 rem_super_sets([L|Ls], R) :-
 	(select(T, Ls, L1),
@@ -106,51 +123,43 @@ rem_super_sets([L|Ls], R) :-
 	;	R = [L|L2],
 		rem_super_sets(Ls, L2)
 	).
-	
-longer(>, L1, L2) :-
-	length(L1, N1),
-	length(L2, N2),
-	N1 > N2.
-longer(<, L1, L2) :-
-	length(L1, N1),
-	length(L2, N2),
-	N1 < N2.
-longer(=, L1, L2) :-
-	length(L1, N1),
-	length(L2, N2),
-	N1 = N2.
-	
+
+% Creates key-value pairs for the list of hitting sets (the key being the size of the hitting set, the value being the 
+% hitting set) and sorts them smallest first.
 sortDiagnosesByLength(Atoms, ByLength) :-
 	map_list_to_pairs(length, Atoms, Pairs),
 	keysort(Pairs, Sorted),
 	pairs_values(Sorted, ByLength).
-	
+
+% Gathers the subset-minimal diagnoses.
 getMinimalDiagnoses(Diagnoses, MinimalDiagnoses) :-
 	sortDiagnosesByLength(Diagnoses, SortedDiagnoses),
 	rem_super_sets(SortedDiagnoses, MinimalDiagnoses).
-	
-main(SD, COMP, OBS, PHS, HT, MinimalDiagnoses) :-
+
+% Gathers the subset-minimal diagnoses given a System through the use of a hitting tree.
+main(SD, COMP, OBS, PHS, MinimalDiagnoses) :-
 	makeHittingTree(SD, COMP, OBS, PHS, THT),
 	gatherDiagnoses(THT, Diagnoses),
 	getMinimalDiagnoses(Diagnoses, MinimalDiagnoses).
 	
+% The same as main/5, but uses makeHittingTree2/5 (the slightly more efficient version) instead of makeHittingTree/5.
+main2(SD, COMP, OBS, PHS, MinimalDiagnoses) :-
+	makeHittingTree2(SD, COMP, OBS, PHS, THT),
+	gatherDiagnoses(THT, Diagnoses),
+	getMinimalDiagnoses(Diagnoses, MinimalDiagnoses).
 	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
+% Calculates the running time for the fulladder system using main/5.
+runningTime1(Runtime) :-
+	statistics(runtime,[Start|_]),
+	fulladder(SD, COMP, OBS),
+	main(SD, COMP, OBS, [], _),
+	statistics(runtime, [Stop|_]),
+	Runtime is Stop - Start.
 
+% Calculates the running time for the fulladder system using main2/5.
+runningTime2(Runtime) :-
+	statistics(runtime,[Start|_]),
+	fulladder(SD, COMP, OBS),
+	main2(SD, COMP, OBS, [], _),
+	statistics(runtime, [Stop|_]),
+	Runtime is Stop - Start.
